@@ -1,0 +1,56 @@
+function [Dvtot,rp,a,Vinf,dvp_GA,C3,DV,V,R] = cost_tot(X,h_atm_venus,T)
+% INPUT:
+%       X[3] departure, fly-by, arrival mjd2000
+%       h_atm_venus[1]: km
+%       T[3]: days  period of revolution of Mercury, Venus, NEO81
+% OUTPUT:
+%       Dvtot[1] [km/s] total mission cost   
+%       rp[1] [km] hyperbolic pericenter radius
+%       a[2] [km] semimajor axes a_minus and a_plus 
+%       Vinf [2x3] [km/s]
+%       dvp_GA[1] [km/s] cost of powered gravity assist
+%       C3[2] [km/s] scalar cost of departure and arrival maneuvers 
+%       DV[4x3] [km/s] vectors Vinf at each end of both arcs
+%       V[4x3] [km/s] vectors V at each end of both arcs
+%       R[4x3] [km] vectors R position at each end of both arcs
+
+ID = [1,2,81];
+mod = 1;
+[C3_dep,v_inf_minus,TOF,cartesian1,DV1,V_inf_minus] = cost(X(1:2),ID(1:2),mod,T(2));
+[v_inf_plus,C3_arr,TOF,cartesian2,V_inf_plus,DV4] = cost(X(2:3),ID(2:3),mod,T(3));
+
+if anynan(v_inf_minus) || anynan(v_inf_plus)
+    Dvtot = NaN;
+    Vinf = NaN;
+    rp = NaN;
+    a = NaN;
+    dvp_GA = NaN;
+    C3 = NaN;
+    DV = NaN;
+    return
+end
+
+mu_V = astroConstants(12);
+R_V = astroConstants(22);
+
+a_minus = -mu_V/v_inf_minus^2;
+a_plus = -mu_V/v_inf_plus^2;
+rp0 = R_V+h_atm_venus; % initial guess close enough to solution (Venus radius)
+
+options = optimset('TolX',1e-14,'Display','off');
+rp = fzero(@fd,rp0,options,V_inf_minus,V_inf_plus,mu_V);
+
+vp_minus = sqrt(v_inf_minus^2+2*mu_V/rp);
+vp_plus = sqrt(v_inf_plus^2+2*mu_V/rp);
+dvp_GA = abs(vp_minus - vp_plus);
+
+Dvtot = C3_dep + C3_arr + dvp_GA;
+
+a = [a_minus;a_plus];
+Vinf = [V_inf_minus';V_inf_plus'];
+C3 = [C3_dep;C3_arr];
+DV = [DV1';V_inf_minus';V_inf_plus';DV4'];
+V = [cartesian1(:,5:6)';cartesian2(:,5:6)'];
+R = [cartesian1(:,1:2)';cartesian2(:,1:2)'];
+
+end
